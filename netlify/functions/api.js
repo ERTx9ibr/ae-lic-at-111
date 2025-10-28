@@ -1,18 +1,43 @@
-// AE 插件激活服务器 - Netlify Functions 版本
-// 注意：Netlify 环境需要使用外部数据库（如 Supabase）
-
+// AE 插件激活服务器 - Netlify Functions + Supabase 版本
 const crypto = require('crypto');
+const { createClient } = require('@supabase/supabase-js');
 
 // 密钥配置
 const SECRET = process.env.SECRET_KEY || 'MySecretKey2025';
 const ADMIN_KEY = process.env.ADMIN_KEY || 'AdminSecret2025';
 
-// ⚠️ 重要：Netlify Functions 上 SQLite 无法持久化
-// 建议使用 Supabase、MongoDB Atlas 或 Upstash
-// 这里使用内存存储作为演示，实际生产环境请替换为数据库
+// Supabase 配置
+const SUPABASE_URL = process.env.SUPABASE_URL || 'https://acxecdtnchxxsfqcnxmm.supabase.co';
+const SUPABASE_KEY = process.env.SUPABASE_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImFjeGVjZHRuY2h4eHNmcWNueG1tIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NjE2NjI5NjEsImV4cCI6MjA3NzIzODk2MX0.kx63qyu_FwGDhCqZHs_Cx9Wg8voT3bxkC8KkmS-BZjQ';
 
-// 临时内存存储（仅用于演示，重启后数据会丢失）
-let licenses = {};
+// 创建 Supabase 客户端
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
+
+// 表名
+const TABLE_NAME = 'licenses';
+
+/**
+ * 初始化数据库表（首次运行时自动创建）
+ */
+async function initDatabase() {
+  try {
+    // 检查表是否存在，如果不存在 Supabase 会通过 SQL 编辑器创建
+    // 这里我们只是确保能连接
+    const { data, error } = await supabase
+      .from(TABLE_NAME)
+      .select('count')
+      .limit(1);
+    
+    if (error && error.code === '42P01') {
+      console.log('提示：请在 Supabase 中创建 licenses 表');
+    }
+  } catch (error) {
+    console.log('数据库初始化提示:', error.message);
+  }
+}
+
+// 在模块加载时初始化
+initDatabase();
 
 /**
  * 生成激活码
@@ -54,15 +79,20 @@ exports.handler = async (event, context) => {
   try {
     // 首页 - 服务器状态
     if (path === '' || path === '/') {
+      const { count, error } = await supabase
+        .from(TABLE_NAME)
+        .select('*', { count: 'exact', head: true });
+
       return {
         statusCode: 200,
         headers,
         body: JSON.stringify({
           status: 'running',
-          service: 'AE License Server (Netlify)',
-          version: '1.0.0',
+          service: 'AE License Server (Netlify + Supabase)',
+          version: '2.0.0',
+          database: 'Supabase',
           timestamp: new Date().toISOString(),
-          notice: '⚠️ 使用内存存储，重启后数据会丢失。生产环境请使用 Supabase 或 MongoDB Atlas'
+          totalLicenses: error ? 0 : count
         })
       };
     }
@@ -72,14 +102,32 @@ exports.handler = async (event, context) => {
       const seed = path.split('/gen/')[1];
       const code = genCode(seed);
       
-      // 保存到内存
-      if (!licenses[code]) {
-        licenses[code] = {
-          code,
-          machineId: null,
-          createdAt: Date.now(),
-          activatedAt: null
-        };
+      // 检查是否已存在
+      const { data: existing } = await supabase
+        .from(TABLE_NAME)
+        .select('*')
+        .eq('code', code)
+        .single();
+
+      if (!existing) {
+        // 插入新激活码
+        const { error } = await supabase
+          .from(TABLE_NAME)
+          .insert([{
+            code,
+            machine_id: null,
+            created_at: new Date().toISOString(),
+            activated_at: null
+          }]);
+
+        if (error) {
+          console.error('插入错误:', error);
+          return {
+            statusCode: 500,
+            headers,
+            body: JSON.stringify({ error: '数据库错误', details: error.message })
+          };
+        }
       }
       
       return {
@@ -114,18 +162,33 @@ exports.handler = async (event, context) => {
       }
 
       const codes = [];
+      const records = [];
+      
       for (let i = 0; i < count; i++) {
         const seed = `batch_${Date.now()}_${i}_${Math.random()}`;
         const code = genCode(seed);
         
-        licenses[code] = {
-          code,
-          machineId: null,
-          createdAt: Date.now(),
-          activatedAt: null
-        };
-        
         codes.push(code);
+        records.push({
+          code,
+          machine_id: null,
+          created_at: new Date().toISOString(),
+          activated_at: null
+        });
+      }
+
+      // 批量插入
+      const { error } = await supabase
+        .from(TABLE_NAME)
+        .insert(records);
+
+      if (error) {
+        console.error('批量插入错误:', error);
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: '数据库错误', details: error.message })
+        };
       }
 
       return {
@@ -155,9 +218,14 @@ exports.handler = async (event, context) => {
         };
       }
 
-      const license = licenses[code];
+      // 查询激活码
+      const { data: license, error } = await supabase
+        .from(TABLE_NAME)
+        .select('*')
+        .eq('code', code)
+        .single();
 
-      if (!license) {
+      if (error || !license) {
         return {
           statusCode: 200,
           headers,
@@ -168,10 +236,24 @@ exports.handler = async (event, context) => {
         };
       }
 
-      if (!license.machineId) {
+      if (!license.machine_id) {
         // 首次激活 - 绑定机器码
-        license.machineId = machineId;
-        license.activatedAt = Date.now();
+        const { error: updateError } = await supabase
+          .from(TABLE_NAME)
+          .update({ 
+            machine_id: machineId,
+            activated_at: new Date().toISOString()
+          })
+          .eq('code', code);
+
+        if (updateError) {
+          console.error('更新错误:', updateError);
+          return {
+            statusCode: 500,
+            headers,
+            body: JSON.stringify({ error: '数据库错误' })
+          };
+        }
         
         return {
           statusCode: 200,
@@ -184,7 +266,7 @@ exports.handler = async (event, context) => {
         };
       }
 
-      if (license.machineId === machineId) {
+      if (license.machine_id === machineId) {
         // 已绑定同一台电脑
         return {
           statusCode: 200,
@@ -221,21 +303,40 @@ exports.handler = async (event, context) => {
         };
       }
 
-      const license = licenses[code];
-      if (license) {
-        license.machineId = null;
-        license.activatedAt = null;
+      const { data: license, error: findError } = await supabase
+        .from(TABLE_NAME)
+        .select('*')
+        .eq('code', code)
+        .single();
+
+      if (findError || !license) {
         return {
-          statusCode: 200,
+          statusCode: 404,
           headers,
-          body: JSON.stringify({ success: true, message: '已解除绑定' })
+          body: JSON.stringify({ error: '激活码不存在' })
+        };
+      }
+
+      const { error: updateError } = await supabase
+        .from(TABLE_NAME)
+        .update({ 
+          machine_id: null,
+          activated_at: null
+        })
+        .eq('code', code);
+
+      if (updateError) {
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: '数据库错误' })
         };
       }
 
       return {
-        statusCode: 404,
+        statusCode: 200,
         headers,
-        body: JSON.stringify({ error: '激活码不存在' })
+        body: JSON.stringify({ success: true, message: '已解除绑定' })
       };
     }
 
@@ -251,22 +352,42 @@ exports.handler = async (event, context) => {
         };
       }
 
-      const allLicenses = Object.values(licenses);
-      const start = (page - 1) * limit;
-      const end = start + limit;
-      const data = allLicenses.slice(start, end);
+      const from = (page - 1) * limit;
+      const to = from + limit - 1;
+
+      const { data, error, count } = await supabase
+        .from(TABLE_NAME)
+        .select('*', { count: 'exact' })
+        .order('created_at', { ascending: false })
+        .range(from, to);
+
+      if (error) {
+        return {
+          statusCode: 500,
+          headers,
+          body: JSON.stringify({ error: '数据库错误' })
+        };
+      }
+
+      // 格式化数据
+      const formattedData = data.map(item => ({
+        code: item.code,
+        machineId: item.machine_id,
+        createdAt: item.created_at ? new Date(item.created_at).getTime() : null,
+        activatedAt: item.activated_at ? new Date(item.activated_at).getTime() : null
+      }));
 
       return {
         statusCode: 200,
         headers,
         body: JSON.stringify({
           success: true,
-          data,
+          data: formattedData,
           pagination: {
             page,
             limit,
-            total: allLicenses.length,
-            pages: Math.ceil(allLicenses.length / limit)
+            total: count,
+            pages: Math.ceil(count / limit)
           }
         })
       };
@@ -292,9 +413,13 @@ exports.handler = async (event, context) => {
         };
       }
 
-      const license = licenses[code];
+      const { data: license, error } = await supabase
+        .from(TABLE_NAME)
+        .select('*')
+        .eq('code', code)
+        .single();
       
-      if (!license) {
+      if (error || !license) {
         return {
           statusCode: 200,
           headers,
@@ -309,10 +434,10 @@ exports.handler = async (event, context) => {
           found: true,
           data: {
             code: license.code,
-            machineId: license.machineId || '未绑定',
-            isActivated: !!license.machineId,
-            createdAt: license.createdAt ? new Date(license.createdAt).toISOString() : null,
-            activatedAt: license.activatedAt ? new Date(license.activatedAt).toISOString() : null
+            machineId: license.machine_id || '未绑定',
+            isActivated: !!license.machine_id,
+            createdAt: license.created_at,
+            activatedAt: license.activated_at
           }
         })
       };
@@ -338,27 +463,36 @@ exports.handler = async (event, context) => {
         };
       }
 
-      if (licenses[code]) {
-        delete licenses[code];
+      const { error } = await supabase
+        .from(TABLE_NAME)
+        .delete()
+        .eq('code', code);
+
+      if (error) {
         return {
           statusCode: 200,
           headers,
-          body: JSON.stringify({ success: true, message: '激活码已删除' })
+          body: JSON.stringify({ success: false, message: '激活码不存在或删除失败' })
         };
       }
 
       return {
         statusCode: 200,
         headers,
-        body: JSON.stringify({ success: false, message: '激活码不存在' })
+        body: JSON.stringify({ success: true, message: '激活码已删除' })
       };
     }
 
     // 统计信息
     if (path === '/stats' && method === 'GET') {
-      const allLicenses = Object.values(licenses);
-      const activated = allLicenses.filter(l => l.machineId).length;
-      const unused = allLicenses.filter(l => !l.machineId).length;
+      const { count: total } = await supabase
+        .from(TABLE_NAME)
+        .select('*', { count: 'exact', head: true });
+
+      const { count: activated } = await supabase
+        .from(TABLE_NAME)
+        .select('*', { count: 'exact', head: true })
+        .not('machine_id', 'is', null);
 
       return {
         statusCode: 200,
@@ -366,9 +500,9 @@ exports.handler = async (event, context) => {
         body: JSON.stringify({
           success: true,
           stats: {
-            total: allLicenses.length,
-            activated,
-            unused
+            total: total || 0,
+            activated: activated || 0,
+            unused: (total || 0) - (activated || 0)
           }
         })
       };
@@ -396,4 +530,3 @@ exports.handler = async (event, context) => {
     };
   }
 };
-
