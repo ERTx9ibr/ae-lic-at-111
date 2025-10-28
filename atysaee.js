@@ -702,6 +702,55 @@
       activatedAt: cacheData.activatedAt
     };
   }
+  
+  /**
+   * 删除缓存文件
+   */
+  function deleteLicenseCache(callback) {
+    if (typeof CSInterface === 'undefined') {
+      console.warn('CSInterface 不可用，无法删除缓存文件');
+      if (callback) callback(false);
+      return;
+    }
+    
+    try {
+      const csInterface = new CSInterface();
+      const cacheDir = getCacheDirectory();
+      const filePath = cacheDir + '/' + CACHE_FILE_NAME;
+      
+      const script = `
+        (function() {
+          try {
+            var file = new File("${filePath.replace(/\\/g, '/')}");
+            if (file.exists) {
+              file.remove();
+              return "success";
+            }
+            return "not_found";
+          } catch(e) {
+            return "error:" + e.toString();
+          }
+        })();
+      `;
+      
+      csInterface.evalScript(script, function(result) {
+        if (result === 'success') {
+          console.log('✅ 缓存文件已删除:', filePath);
+          if (callback) callback(true);
+        } else if (result === 'not_found') {
+          console.log('缓存文件不存在');
+          if (callback) callback(true);
+        } else {
+          console.error('删除缓存文件失败:', result);
+          if (callback) callback(false);
+        }
+      });
+      
+    } catch(e) {
+      console.error('删除缓存文件异常:', e);
+      if (callback) callback(false);
+    }
+  }
 
   /**
    * 获取系统硬件信息（AE 环境）
@@ -1480,16 +1529,36 @@
         console.log('📝 激活码:', offlineResult.code);
         console.log('🖥️  机器码:', offlineResult.machineId);
         
-        // 可选：在后台尝试联网验证（不阻塞用户使用）
+        // 在后台尝试联网验证（验证服务器是否有此激活码）
         setTimeout(() => {
+          console.log('🌐 后台验证激活码有效性...');
           verifyLicense(offlineResult.code).then(result => {
             if (result.success) {
-              console.log('🌐 在线验证成功，缓存已更新');
+              console.log('✅ 在线验证成功，激活码有效');
             } else {
-              console.warn('⚠️ 在线验证失败，但离线缓存仍然有效');
+              // 服务器上没有找到对应的激活码或机器码不匹配
+              console.error('❌ 服务器验证失败:', result.message);
+              console.warn('⚠️ 本地缓存文件可能已失效或被篡改');
+              
+              // 清除本地缓存文件
+              deleteLicenseCache(function(deleted) {
+                if (deleted) {
+                  console.log('🗑️  已清除本地缓存文件');
+                }
+              });
+              
+              // 清除 localStorage
+              localStorage.removeItem(STORAGE_KEYS.ACTIVATION_STATUS);
+              localStorage.removeItem(STORAGE_KEYS.LICENSE_CODE);
+              localStorage.removeItem(STORAGE_KEYS.ACTIVATION_TIME);
+              
+              // 弹出激活界面
+              alert('许可证验证失败！\n\n原因：' + result.message + '\n\n请重新激活软件。');
+              createActivationUI();
             }
           }).catch(e => {
-            console.log('🔌 网络不可用，使用离线模式');
+            console.log('🔌 网络不可用，跳过在线验证，继续使用离线模式');
+            console.log('提示：下次联网时会自动验证激活码有效性');
           });
         }, 2000);
         
@@ -1563,38 +1632,21 @@
   
   // 全局函数：清除缓存文件（调试用）
   window.clearLicenseCache = function() {
-    if (typeof CSInterface === 'undefined') {
-      console.warn('CSInterface 不可用');
-      return;
-    }
+    console.log('🗑️  开始清除所有激活信息...');
     
-    const csInterface = new CSInterface();
-    const cacheDir = getCacheDirectory();
-    const filePath = cacheDir + '/' + CACHE_FILE_NAME;
-    
-    const script = `
-      (function() {
-        try {
-          var file = new File("${filePath.replace(/\\/g, '/')}");
-          if (file.exists) {
-            file.remove();
-            return "success";
-          }
-          return "not_found";
-        } catch(e) {
-          return "error:" + e.toString();
-        }
-      })();
-    `;
-    
-    csInterface.evalScript(script, function(result) {
-      if (result === 'success') {
+    // 删除缓存文件
+    deleteLicenseCache(function(deleted) {
+      if (deleted) {
         console.log('✅ 缓存文件已删除');
-        localStorage.clear();
-        console.log('✅ localStorage 已清空');
-      } else {
-        console.log('结果:', result);
       }
+      
+      // 清空 localStorage
+      localStorage.removeItem(STORAGE_KEYS.LICENSE_CODE);
+      localStorage.removeItem(STORAGE_KEYS.MACHINE_ID);
+      localStorage.removeItem(STORAGE_KEYS.ACTIVATION_STATUS);
+      localStorage.removeItem(STORAGE_KEYS.ACTIVATION_TIME);
+      console.log('✅ localStorage 已清空');
+      console.log('✅ 所有激活信息已清除，请重新启动软件');
     });
   };
 
