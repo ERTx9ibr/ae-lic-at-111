@@ -1,4 +1,4 @@
-# 🚀 Render.com 快速部署指南
+# 🚀 Vercel.com 快速部署指南
 
 ## 第一步：准备代码
 
@@ -16,42 +16,38 @@ git commit -m "Initial commit: AE License Server"
 创建一个新的 GitHub 仓库，然后：
 
 ```bash
-git remote add origin https://github.com/你的用户名/你的仓库名.git
+git remote add origin https://github.com/ERTx9ibr/ae-lic-at
 git branch -M main
 git push -u origin main
 ```
 
-## 第二步：在 Render.com 部署
+## 第二步：在 Vercel.com 部署
 
-### 2.1 注册/登录 Render.com
+### 2.1 注册/登录 Vercel
 
-访问 [https://render.com](https://render.com) 并登录
+访问 [https://vercel.com](https://vercel.com) 并登录（可以使用 GitHub 账号直接登录）
 
-### 2.2 创建新的 Web Service
+### 2.2 导入项目
 
-1. 点击 Dashboard 中的 **"New +"** 按钮
-2. 选择 **"Web Service"**
-3. 连接你的 GitHub 账号（如果还没连接）
-4. 选择你刚才推送的仓库
+1. 点击 **"Add New..."** → **"Project"**
+2. 从列表中选择你的 GitHub 仓库 `ae-lic-at`
+3. 点击 **"Import"**
 
-### 2.3 配置服务
+### 2.3 配置项目
 
 填写以下信息：
 
 | 配置项 | 值 | 说明 |
 |--------|-----|------|
-| Name | `ae-license-server` | 服务名称（可自定义） |
-| Region | `Singapore` 或最近的区域 | 选择离用户最近的服务器 |
-| Branch | `main` | Git 分支 |
-| Root Directory | 留空 | 默认根目录 |
-| Environment | `Node` | 运行环境 |
-| Build Command | `npm install` | 构建命令 |
-| Start Command | `npm start` | 启动命令 |
-| Instance Type | `Free` | 免费套餐 |
+| Project Name | `ae-license-server` | 项目名称（可自定义） |
+| Framework Preset | `Other` | 选择其他 |
+| Root Directory | `./` | 根目录 |
+| Build Command | 留空 | Vercel 会自动检测 |
+| Output Directory | 留空 | 使用默认 |
 
 ### 2.4 设置环境变量
 
-点击 **"Advanced"**，然后添加环境变量：
+在 **"Environment Variables"** 部分添加：
 
 ```
 SECRET_KEY=你的随机密钥_建议30位以上
@@ -65,11 +61,11 @@ ADMIN_KEY=你的管理员密钥_建议30位以上
 
 ### 2.5 部署
 
-1. 点击 **"Create Web Service"**
-2. 等待部署完成（约 2-5 分钟）
+1. 点击 **"Deploy"**
+2. 等待部署完成（约 1-2 分钟）
 3. 部署成功后，你会看到服务地址，例如：
    ```
-   https://ae-license-server.onrender.com
+   https://ae-license-server.vercel.app
    ```
 
 ## 第三步：测试服务器
@@ -77,7 +73,7 @@ ADMIN_KEY=你的管理员密钥_建议30位以上
 ### 3.1 测试服务器状态
 
 ```bash
-curl https://你的服务器地址.onrender.com/
+curl https://你的项目名.vercel.app/api
 ```
 
 应该返回：
@@ -93,7 +89,7 @@ curl https://你的服务器地址.onrender.com/
 ### 3.2 生成测试激活码
 
 ```bash
-curl https://你的服务器地址.onrender.com/gen/test001
+curl https://你的项目名.vercel.app/api/gen/test001
 ```
 
 返回示例：
@@ -112,14 +108,16 @@ curl https://你的服务器地址.onrender.com/gen/test001
 打开 `atysaee.js` 文件，找到第 423 行左右：
 
 ```javascript
-const LICENSE_SERVER = 'https://your-server.onrender.com';
+const LICENSE_SERVER = 'https://your-server.vercel.app';
 ```
 
 改为：
 
 ```javascript
-const LICENSE_SERVER = 'https://你的实际服务器地址.onrender.com';
+const LICENSE_SERVER = 'https://你的项目名.vercel.app/api';
 ```
+
+**注意：** Vercel 部署需要在 URL 后加 `/api` 路径。
 
 ### 4.2 测试激活界面
 
@@ -137,7 +135,7 @@ const LICENSE_SERVER = 'https://你的实际服务器地址.onrender.com';
 设置环境变量：
 
 ```bash
-export SERVER_URL=https://你的服务器地址.onrender.com
+export SERVER_URL=https://你的项目名.vercel.app/api
 export ADMIN_KEY=你设置的管理员密钥
 ```
 
@@ -163,7 +161,7 @@ node admin-tool.js
 也可以直接使用 API：
 
 ```bash
-curl -X POST https://你的服务器地址.onrender.com/gen/batch \
+curl -X POST https://你的项目名.vercel.app/api/gen/batch \
   -H "Content-Type: application/json" \
   -d '{
     "count": 10,
@@ -173,32 +171,32 @@ curl -X POST https://你的服务器地址.onrender.com/gen/batch \
 
 ## 常见问题
 
-### Q1: 部署后访问很慢或超时？
+### Q1: 数据库数据丢失？
 
-**A**: Render.com 免费套餐在 15 分钟无活动后会休眠，首次访问需要等待 10-30 秒唤醒。
+**A**: Vercel 是 Serverless 平台，每次请求都是独立的函数执行，本地 SQLite 无法持久化。
+
+**解决方案（必须使用外部数据库）**：
+1. 使用 [Vercel Postgres](https://vercel.com/docs/storage/vercel-postgres)（推荐）
+2. 使用 [Supabase](https://supabase.com)（免费 PostgreSQL）
+3. 使用 [MongoDB Atlas](https://www.mongodb.com/atlas)（免费 MongoDB）
+4. 使用 [PlanetScale](https://planetscale.com)（免费 MySQL）
+
+### Q2: 如何使用 Vercel Postgres？
+
+1. 在 Vercel Dashboard 中点击项目
+2. 进入 **Storage** 标签
+3. 创建 **Postgres** 数据库
+4. Vercel 会自动添加环境变量 `POSTGRES_URL`
+5. 修改 `server.js` 使用 PostgreSQL 而不是 SQLite
+
+### Q3: 激活后重启电脑/清理浏览器，激活失效？
+
+**A**: 机器码是基于硬件信息（CPU、GPU）生成的，正常情况下不会变化。
 
 **解决方案**：
-1. 升级到付费套餐（$7/月起）
-2. 使用 Uptime Robot 等服务定期 ping 你的服务器保持活跃
-3. 使用其他不休眠的托管服务
-
-### Q2: 激活后重启电脑/清理浏览器，激活失效？
-
-**A**: 机器码是基于浏览器指纹生成的，清理浏览器数据会改变指纹。
-
-**解决方案**：
-1. 提示用户不要清理浏览器数据
+1. 检查浏览器控制台是否有错误
 2. 使用管理员接口解绑后重新激活
-3. 改进机器码生成逻辑，使用更稳定的特征
-
-### Q3: 数据库数据丢失？
-
-**A**: Render.com 免费套餐不保证文件系统持久化。
-
-**解决方案**：
-1. 升级到付费套餐
-2. 使用外部数据库（PostgreSQL、MongoDB）
-3. 定期备份数据库文件
+3. 确认用户没有清除 localStorage
 
 ### Q4: CORS 错误？
 
@@ -212,24 +210,44 @@ curl -X POST https://你的服务器地址.onrender.com/gen/batch \
 
 ## 进阶配置
 
-### 限制 CORS 来源（生产环境推荐）
+### 使用外部数据库（重要！）
 
-在 `server.js` 中修改：
+Vercel 必须使用外部数据库，推荐使用 Vercel Postgres：
+
+1. 在 Vercel 项目中进入 **Storage** 标签
+2. 点击 **Create Database** → **Postgres**
+3. 选择区域（推荐选择离用户最近的）
+4. 点击 **Create**
+5. Vercel 会自动添加数据库连接环境变量
+
+然后修改 `server.js` 使用 PostgreSQL：
 
 ```javascript
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', 'https://你的域名.com');
-  // ... 其他配置
+// 替换 SQLite 为 PostgreSQL
+const { Pool } = require('pg');
+const pool = new Pool({
+  connectionString: process.env.POSTGRES_URL,
+  ssl: { rejectUnauthorized: false }
 });
+
+// 创建表
+pool.query(`
+  CREATE TABLE IF NOT EXISTS licenses (
+    code TEXT PRIMARY KEY,
+    machineId TEXT,
+    createdAt BIGINT,
+    activatedAt BIGINT
+  )
+`);
 ```
 
-### 使用外部数据库
+### 限制 CORS 来源（生产环境推荐）
 
-如果需要持久化数据，可以：
+在 `api/index.js` 中修改：
 
-1. 在 Render.com 创建 PostgreSQL 数据库
-2. 安装 `pg` 包：`npm install pg`
-3. 修改 `server.js` 使用 PostgreSQL
+```javascript
+res.setHeader('Access-Control-Allow-Origin', 'https://你的域名.com');
+```
 
 ### 添加日志记录
 
@@ -264,17 +282,18 @@ app.use('/verify', limiter);
 
 ### 查看日志
 
-在 Render.com Dashboard 中：
-1. 进入你的服务
-2. 点击 "Logs" 标签
-3. 实时查看服务器日志
+在 Vercel Dashboard 中：
+1. 进入你的项目
+2. 点击 **"Deployments"** 查看部署历史
+3. 点击 **"Functions"** 标签查看函数日志
+4. 点击具体的函数调用查看详细日志
 
 ### 设置告警
 
-Render.com 提供邮件通知：
-1. 进入服务设置
-2. 配置 "Notifications"
-3. 设置部署失败、服务崩溃等告警
+Vercel 提供多种监控方式：
+1. 在项目设置中配置 **Notifications**
+2. 集成 Slack、Discord 等通知
+3. 使用 Vercel Analytics 监控性能
 
 ### 定期检查
 

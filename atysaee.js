@@ -419,8 +419,8 @@
 (function() {
   'use strict';
 
-  // 配置：服务器地址（部署到Render后修改为实际地址）
-  const LICENSE_SERVER = 'https://your-server.onrender.com'; // 部署后替换为实际地址
+  // 配置：服务器地址（部署到Vercel后修改为实际地址）
+  const LICENSE_SERVER = 'https://your-project.vercel.app/api'; // 部署后替换为实际地址
   
   // 本地存储键名
   const STORAGE_KEYS = {
