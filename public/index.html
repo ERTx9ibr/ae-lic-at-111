@@ -1,0 +1,108 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AE 激活码服务器</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: linear-gradient(135deg, #6EA963 0%, #4B7341 100%);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+
+    .container {
+      background: white;
+      border-radius: 15px;
+      padding: 40px;
+      max-width: 600px;
+      width: 100%;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+    }
+
+    h1 {
+      color: #4B7341;
+      margin-bottom: 10px;
+      font-size: 32px;
+    }
+
+    p {
+      color: #666;
+      line-height: 1.6;
+      margin-bottom: 15px;
+    }
+
+    .status {
+      background: #B7D4A3;
+      padding: 15px;
+      border-radius: 8px;
+      margin: 20px 0;
+    }
+
+    .status h3 {
+      color: #4B7341;
+      margin-bottom: 10px;
+    }
+
+    .status code {
+      background: white;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-family: 'Courier New', monospace;
+      color: #4B7341;
+    }
+
+    .footer {
+      margin-top: 30px;
+      padding-top: 20px;
+      border-top: 2px solid #CED6B6;
+      text-align: center;
+      color: #91945D;
+      font-size: 14px;
+    }
+
+    .emoji {
+      font-size: 48px;
+      text-align: center;
+      margin-bottom: 20px;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="emoji">🔐</div>
+    <h1>AE 激活码服务器</h1>
+    <p>欢迎使用 AE 插件激活码验证系统</p>
+
+    <div class="status">
+      <h3>✅ 服务状态</h3>
+      <p>服务器运行正常</p>
+      <p>API 地址: <code>/.netlify/functions/api</code></p>
+    </div>
+
+    <p><strong>功能：</strong></p>
+    <ul style="color: #666; line-height: 1.8; margin-left: 20px;">
+      <li>生成激活码</li>
+      <li>验证激活码</li>
+      <li>一机一码绑定</li>
+      <li>激活码管理</li>
+    </ul>
+
+    <div class="footer">
+      <p>Powered by Netlify Functions</p>
+      <p>© 2025 AE License Server</p>
+    </div>
+  </div>
+</body>
+</html>
+

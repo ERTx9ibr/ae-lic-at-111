@@ -1,4 +1,4 @@
-# 🚀 Vercel.com 快速部署指南
+# 🚀 Netlify.com 快速部署指南
 
 ## 第一步：准备代码
 
@@ -21,17 +21,18 @@ git branch -M main
 git push -u origin main
 ```
 
-## 第二步：在 Vercel.com 部署
+## 第二步：在 Netlify.com 部署
 
-### 2.1 注册/登录 Vercel
+### 2.1 注册/登录 Netlify
 
-访问 [https://vercel.com](https://vercel.com) 并登录（可以使用 GitHub 账号直接登录）
+访问 [https://app.netlify.com](https://app.netlify.com) 并登录（可以使用 GitHub 账号直接登录）
 
 ### 2.2 导入项目
 
-1. 点击 **"Add New..."** → **"Project"**
-2. 从列表中选择你的 GitHub 仓库 `ae-lic-at`
-3. 点击 **"Import"**
+1. 点击 **"Add new site"** → **"Import an existing project"**
+2. 选择 **"GitHub"**（首次使用需要授权）
+3. 从列表中选择你的仓库 `ae-lic-at`
+4. 点击仓库进入配置页面
 
 ### 2.3 配置项目
 
@@ -39,15 +40,16 @@ git push -u origin main
 
 | 配置项 | 值 | 说明 |
 |--------|-----|------|
-| Project Name | `ae-license-server` | 项目名称（可自定义） |
-| Framework Preset | `Other` | 选择其他 |
-| Root Directory | `./` | 根目录 |
-| Build Command | 留空 | Vercel 会自动检测 |
-| Output Directory | 留空 | 使用默认 |
+| Site name | `ae-license-server` | 网站名称（可自定义） |
+| Branch to deploy | `main` | 部署分支 |
+| Base directory | 留空 | 使用根目录 |
+| Build command | 留空 | 无需构建 |
+| Publish directory | `public` | 发布目录 |
+| Functions directory | `netlify/functions` | Serverless 函数目录 |
 
 ### 2.4 设置环境变量
 
-在 **"Environment Variables"** 部分添加：
+点击 **"Advanced"** → **"New variable"**，添加：
 
 ```
 SECRET_KEY=你的随机密钥_建议30位以上
@@ -61,11 +63,11 @@ ADMIN_KEY=你的管理员密钥_建议30位以上
 
 ### 2.5 部署
 
-1. 点击 **"Deploy"**
+1. 点击 **"Deploy site"**
 2. 等待部署完成（约 1-2 分钟）
 3. 部署成功后，你会看到服务地址，例如：
    ```
-   https://ae-license-server.vercel.app
+   https://ae-license-server.netlify.app
    ```
 
 ## 第三步：测试服务器
@@ -73,7 +75,7 @@ ADMIN_KEY=你的管理员密钥_建议30位以上
 ### 3.1 测试服务器状态
 
 ```bash
-curl https://你的项目名.vercel.app/api
+curl https://你的网站名.netlify.app/.netlify/functions/api
 ```
 
 应该返回：
@@ -89,7 +91,7 @@ curl https://你的项目名.vercel.app/api
 ### 3.2 生成测试激活码
 
 ```bash
-curl https://你的项目名.vercel.app/api/gen/test001
+curl https://你的网站名.netlify.app/.netlify/functions/api/gen/test001
 ```
 
 返回示例：
@@ -108,16 +110,16 @@ curl https://你的项目名.vercel.app/api/gen/test001
 打开 `atysaee.js` 文件，找到第 423 行左右：
 
 ```javascript
-const LICENSE_SERVER = 'https://your-server.vercel.app';
+const LICENSE_SERVER = 'https://your-site.netlify.app';
 ```
 
 改为：
 
 ```javascript
-const LICENSE_SERVER = 'https://你的项目名.vercel.app/api';
+const LICENSE_SERVER = 'https://你的网站名.netlify.app/.netlify/functions/api';
 ```
 
-**注意：** Vercel 部署需要在 URL 后加 `/api` 路径。
+**注意：** Netlify 部署的 API 路径是 `/.netlify/functions/api`。
 
 ### 4.2 测试激活界面
 
@@ -135,7 +137,7 @@ const LICENSE_SERVER = 'https://你的项目名.vercel.app/api';
 设置环境变量：
 
 ```bash
-export SERVER_URL=https://你的项目名.vercel.app/api
+export SERVER_URL=https://你的网站名.netlify.app/.netlify/functions/api
 export ADMIN_KEY=你设置的管理员密钥
 ```
 
@@ -161,7 +163,7 @@ node admin-tool.js
 也可以直接使用 API：
 
 ```bash
-curl -X POST https://你的项目名.vercel.app/api/gen/batch \
+curl -X POST https://你的网站名.netlify.app/.netlify/functions/api/gen/batch \
   -H "Content-Type: application/json" \
   -d '{
     "count": 10,
@@ -173,21 +175,21 @@ curl -X POST https://你的项目名.vercel.app/api/gen/batch \
 
 ### Q1: 数据库数据丢失？
 
-**A**: Vercel 是 Serverless 平台，每次请求都是独立的函数执行，本地 SQLite 无法持久化。
+**A**: Netlify Functions 是 Serverless 平台，每次请求都是独立的函数执行，本地 SQLite 无法持久化。
 
 **解决方案（必须使用外部数据库）**：
-1. 使用 [Vercel Postgres](https://vercel.com/docs/storage/vercel-postgres)（推荐）
-2. 使用 [Supabase](https://supabase.com)（免费 PostgreSQL）
-3. 使用 [MongoDB Atlas](https://www.mongodb.com/atlas)（免费 MongoDB）
-4. 使用 [PlanetScale](https://planetscale.com)（免费 MySQL）
+1. 使用 [Supabase](https://supabase.com)（推荐，免费 PostgreSQL）
+2. 使用 [MongoDB Atlas](https://www.mongodb.com/atlas)（免费 MongoDB）
+3. 使用 [PlanetScale](https://planetscale.com)（免费 MySQL）
+4. 使用 [Upstash](https://upstash.com)（Redis，适合简单存储）
 
-### Q2: 如何使用 Vercel Postgres？
+### Q2: 如何使用 Supabase 数据库？
 
-1. 在 Vercel Dashboard 中点击项目
-2. 进入 **Storage** 标签
-3. 创建 **Postgres** 数据库
-4. Vercel 会自动添加环境变量 `POSTGRES_URL`
-5. 修改 `server.js` 使用 PostgreSQL 而不是 SQLite
+1. 访问 [https://supabase.com](https://supabase.com) 注册
+2. 创建新项目，选择区域（推荐 Singapore）
+3. 获取数据库连接信息（在 Settings → Database）
+4. 在 Netlify 环境变量中添加 `DATABASE_URL`
+5. 修改函数代码使用 PostgreSQL
 
 ### Q3: 激活后重启电脑/清理浏览器，激活失效？
 
@@ -212,25 +214,33 @@ curl -X POST https://你的项目名.vercel.app/api/gen/batch \
 
 ### 使用外部数据库（重要！）
 
-Vercel 必须使用外部数据库，推荐使用 Vercel Postgres：
+Netlify Functions 必须使用外部数据库，推荐使用 Supabase：
 
-1. 在 Vercel 项目中进入 **Storage** 标签
-2. 点击 **Create Database** → **Postgres**
-3. 选择区域（推荐选择离用户最近的）
-4. 点击 **Create**
-5. Vercel 会自动添加数据库连接环境变量
+#### 步骤 1：创建 Supabase 项目
 
-然后修改 `server.js` 使用 PostgreSQL：
+1. 访问 [https://supabase.com](https://supabase.com) 并注册
+2. 点击 **"New Project"**
+3. 填写项目信息，选择区域（推荐 Singapore）
+4. 等待数据库初始化（约 2 分钟）
+
+#### 步骤 2：获取连接信息
+
+1. 进入项目 → Settings → Database
+2. 复制 **Connection string** (URI)
+3. 在 Netlify 添加环境变量 `DATABASE_URL`
+
+#### 步骤 3：修改函数代码
+
+修改 `netlify/functions/api.js` 使用 PostgreSQL：
 
 ```javascript
-// 替换 SQLite 为 PostgreSQL
 const { Pool } = require('pg');
 const pool = new Pool({
-  connectionString: process.env.POSTGRES_URL,
+  connectionString: process.env.DATABASE_URL,
   ssl: { rejectUnauthorized: false }
 });
 
-// 创建表
+// 创建表（首次运行）
 pool.query(`
   CREATE TABLE IF NOT EXISTS licenses (
     code TEXT PRIMARY KEY,
@@ -238,15 +248,15 @@ pool.query(`
     createdAt BIGINT,
     activatedAt BIGINT
   )
-`);
+`).catch(() => {});
 ```
 
 ### 限制 CORS 来源（生产环境推荐）
 
-在 `api/index.js` 中修改：
+在 `netlify/functions/api.js` 中修改：
 
 ```javascript
-res.setHeader('Access-Control-Allow-Origin', 'https://你的域名.com');
+headers['Access-Control-Allow-Origin'] = 'https://你的域名.com';
 ```
 
 ### 添加日志记录
@@ -282,18 +292,18 @@ app.use('/verify', limiter);
 
 ### 查看日志
 
-在 Vercel Dashboard 中：
-1. 进入你的项目
-2. 点击 **"Deployments"** 查看部署历史
-3. 点击 **"Functions"** 标签查看函数日志
-4. 点击具体的函数调用查看详细日志
+在 Netlify Dashboard 中：
+1. 进入你的网站
+2. 点击 **"Functions"** 标签查看函数列表
+3. 点击具体函数查看调用日志
+4. 点击 **"Logs"** 查看实时日志流
 
 ### 设置告警
 
-Vercel 提供多种监控方式：
-1. 在项目设置中配置 **Notifications**
-2. 集成 Slack、Discord 等通知
-3. 使用 Vercel Analytics 监控性能
+Netlify 提供多种通知方式：
+1. 在 Site settings → **Build & deploy** → **Deploy notifications**
+2. 可以配置邮件、Slack、Webhook 等
+3. 设置部署成功/失败通知
 
 ### 定期检查
 
