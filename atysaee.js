@@ -1108,6 +1108,28 @@
     document.getElementById('activated-content').style.display = 'block';
     document.getElementById('activated-code').textContent = status.code;
     document.getElementById('activated-machine').textContent = status.machineId;
+    
+    // 2秒后自动关闭激活面板
+    setTimeout(() => {
+      closeActivationPanel();
+    }, 2000);
+  }
+  
+  /**
+   * 关闭激活面板
+   */
+  function closeActivationPanel() {
+    const panel = document.getElementById('ae-activation-panel');
+    const overlay = document.getElementById('ae-activation-overlay');
+    
+    if (panel) {
+      panel.remove();
+    }
+    if (overlay) {
+      overlay.remove();
+    }
+    
+    console.log('✅ 激活面板已关闭');
   }
 
   /**
