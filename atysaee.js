@@ -1536,29 +1536,44 @@
             if (result.success) {
               console.log('✅ 在线验证成功，激活码有效');
             } else {
-              // 服务器上没有找到对应的激活码或机器码不匹配
-              console.error('❌ 服务器验证失败:', result.message);
-              console.warn('⚠️ 本地缓存文件可能已失效或被篡改');
+              // 检查是否是网络错误（断网情况）
+              const isNetworkError = result.message && (
+                result.message.indexOf('网络') >= 0 || 
+                result.message.indexOf('连接失败') >= 0 ||
+                result.message.indexOf('NetworkError') >= 0 ||
+                result.message.indexOf('Failed to fetch') >= 0
+              );
               
-              // 清除本地缓存文件
-              deleteLicenseCache(function(deleted) {
-                if (deleted) {
-                  console.log('🗑️  已清除本地缓存文件');
-                }
-              });
-              
-              // 清除 localStorage
-              localStorage.removeItem(STORAGE_KEYS.ACTIVATION_STATUS);
-              localStorage.removeItem(STORAGE_KEYS.LICENSE_CODE);
-              localStorage.removeItem(STORAGE_KEYS.ACTIVATION_TIME);
-              
-              // 弹出激活界面
-              alert('许可证验证失败！\n\n原因：' + result.message + '\n\n请重新激活软件。');
-              createActivationUI();
+              if (isNetworkError) {
+                // 网络不可用，跳过验证
+                console.log('🔌 网络不可用，跳过在线验证，继续使用离线模式');
+                console.log('💡 提示：下次联网时会自动验证激活码有效性');
+              } else {
+                // 真正的验证失败（激活码不存在或机器码不匹配）
+                console.error('❌ 服务器验证失败:', result.message);
+                console.warn('⚠️ 本地缓存文件可能已失效或被篡改');
+                
+                // 清除本地缓存文件
+                deleteLicenseCache(function(deleted) {
+                  if (deleted) {
+                    console.log('🗑️  已清除本地缓存文件');
+                  }
+                });
+                
+                // 清除 localStorage
+                localStorage.removeItem(STORAGE_KEYS.ACTIVATION_STATUS);
+                localStorage.removeItem(STORAGE_KEYS.LICENSE_CODE);
+                localStorage.removeItem(STORAGE_KEYS.ACTIVATION_TIME);
+                
+                // 弹出激活界面
+                alert('许可证验证失败！\n\n原因：' + result.message + '\n\n请重新激活软件。');
+                createActivationUI();
+              }
             }
           }).catch(e => {
-            console.log('🔌 网络不可用，跳过在线验证，继续使用离线模式');
-            console.log('提示：下次联网时会自动验证激活码有效性');
+            // 异常捕获（例如代码错误）
+            console.log('🔌 网络异常，跳过在线验证，继续使用离线模式');
+            console.log('异常信息:', e);
           });
         }, 2000);
         
