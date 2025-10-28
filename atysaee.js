@@ -429,6 +429,279 @@
     ACTIVATION_STATUS: 'ae_activation_status',
     ACTIVATION_TIME: 'ae_activation_time'
   };
+  
+  // 加密密钥（用于加密缓存文件）
+  const ENCRYPT_KEY = 'AE_LICENSE_2025_SECRET_KEY_V1';
+  
+  // 缓存文件名
+  const CACHE_FILE_NAME = '.ae_license_cache';
+  
+  /**
+   * 获取系统类型
+   */
+  function getOSType() {
+    const platform = navigator.platform.toLowerCase();
+    const userAgent = navigator.userAgent.toLowerCase();
+    
+    if (platform.indexOf('win') >= 0 || userAgent.indexOf('windows') >= 0) {
+      return 'windows';
+    } else if (platform.indexOf('mac') >= 0 || userAgent.indexOf('mac') >= 0) {
+      return 'mac';
+    }
+    return 'unknown';
+  }
+  
+  /**
+   * 获取缓存目录路径（根据操作系统）
+   */
+  function getCacheDirectory() {
+    const osType = getOSType();
+    
+    if (typeof CSInterface !== 'undefined') {
+      try {
+        const csInterface = new CSInterface();
+        const systemPath = csInterface.getSystemPath('userData');
+        
+        if (systemPath) {
+          // Windows: C:\Users\用户名\AppData\Roaming\Adobe\CEP\extensions\...
+          // Mac: ~/Library/Application Support/Adobe/CEP/extensions/...
+          return systemPath;
+        }
+      } catch(e) {
+        console.log('获取系统路径失败:', e);
+      }
+    }
+    
+    // 降级方案：使用默认路径
+    if (osType === 'windows') {
+      return '%APPDATA%\\Adobe\\AE_License\\';
+    } else if (osType === 'mac') {
+      return '~/Library/Application Support/Adobe/AE_License/';
+    }
+    
+    return './';
+  }
+  
+  /**
+   * 简单的AES加密（使用异或和Base64）
+   */
+  function encryptData(text) {
+    try {
+      const key = ENCRYPT_KEY;
+      let encrypted = '';
+      
+      for (let i = 0; i < text.length; i++) {
+        const charCode = text.charCodeAt(i) ^ key.charCodeAt(i % key.length);
+        encrypted += String.fromCharCode(charCode);
+      }
+      
+      // Base64编码
+      return btoa(encodeURIComponent(encrypted));
+    } catch(e) {
+      console.error('加密失败:', e);
+      return null;
+    }
+  }
+  
+  /**
+   * 解密数据
+   */
+  function decryptData(encrypted) {
+    try {
+      // Base64解码
+      const decoded = decodeURIComponent(atob(encrypted));
+      const key = ENCRYPT_KEY;
+      let decrypted = '';
+      
+      for (let i = 0; i < decoded.length; i++) {
+        const charCode = decoded.charCodeAt(i) ^ key.charCodeAt(i % key.length);
+        decrypted += String.fromCharCode(charCode);
+      }
+      
+      return decrypted;
+    } catch(e) {
+      console.error('解密失败:', e);
+      return null;
+    }
+  }
+  
+  /**
+   * 写入缓存文件（使用CSInterface）
+   */
+  function writeLicenseCache(data) {
+    if (typeof CSInterface === 'undefined') {
+      console.warn('CSInterface 不可用，无法写入缓存文件');
+      return false;
+    }
+    
+    try {
+      const csInterface = new CSInterface();
+      const cacheDir = getCacheDirectory();
+      const filePath = cacheDir + '/' + CACHE_FILE_NAME;
+      
+      // 准备缓存数据
+      const cacheData = {
+        code: data.code,
+        machineId: data.machineId,
+        activatedAt: data.activatedAt || Date.now(),
+        version: '1.0'
+      };
+      
+      // 加密数据
+      const jsonStr = JSON.stringify(cacheData);
+      const encrypted = encryptData(jsonStr);
+      
+      if (!encrypted) {
+        console.error('数据加密失败');
+        return false;
+      }
+      
+      // 使用 evalScript 调用 ExtendScript 写入文件
+      const script = `
+        (function() {
+          try {
+            var file = new File("${filePath.replace(/\\/g, '/')}");
+            var folder = file.parent;
+            
+            // 创建目录（如果不存在）
+            if (!folder.exists) {
+              folder.create();
+            }
+            
+            // 写入文件
+            file.encoding = "UTF-8";
+            file.open("w");
+            file.write("${encrypted.replace(/"/g, '\\"')}");
+            file.close();
+            
+            "success";
+          } catch(e) {
+            "error:" + e.toString();
+          }
+        })();
+      `;
+      
+      csInterface.evalScript(script, function(result) {
+        if (result === 'success') {
+          console.log('✅ 许可证缓存文件已写入:', filePath);
+        } else {
+          console.error('❌ 写入缓存文件失败:', result);
+        }
+      });
+      
+      return true;
+      
+    } catch(e) {
+      console.error('写入缓存文件异常:', e);
+      return false;
+    }
+  }
+  
+  /**
+   * 读取缓存文件
+   */
+  function readLicenseCache(callback) {
+    if (typeof CSInterface === 'undefined') {
+      console.warn('CSInterface 不可用，无法读取缓存文件');
+      callback(null);
+      return;
+    }
+    
+    try {
+      const csInterface = new CSInterface();
+      const cacheDir = getCacheDirectory();
+      const filePath = cacheDir + '/' + CACHE_FILE_NAME;
+      
+      // 使用 evalScript 调用 ExtendScript 读取文件
+      const script = `
+        (function() {
+          try {
+            var file = new File("${filePath.replace(/\\/g, '/')}");
+            
+            if (!file.exists) {
+              return "not_found";
+            }
+            
+            file.encoding = "UTF-8";
+            file.open("r");
+            var content = file.read();
+            file.close();
+            
+            return content;
+          } catch(e) {
+            return "error:" + e.toString();
+          }
+        })();
+      `;
+      
+      csInterface.evalScript(script, function(result) {
+        if (result === 'not_found') {
+          console.log('缓存文件不存在');
+          callback(null);
+          return;
+        }
+        
+        if (result.indexOf('error:') === 0) {
+          console.error('读取缓存文件失败:', result);
+          callback(null);
+          return;
+        }
+        
+        // 解密数据
+        const decrypted = decryptData(result);
+        if (!decrypted) {
+          console.error('解密缓存文件失败');
+          callback(null);
+          return;
+        }
+        
+        try {
+          const cacheData = JSON.parse(decrypted);
+          console.log('✅ 成功读取许可证缓存文件');
+          callback(cacheData);
+        } catch(e) {
+          console.error('解析缓存文件失败:', e);
+          callback(null);
+        }
+      });
+      
+    } catch(e) {
+      console.error('读取缓存文件异常:', e);
+      callback(null);
+    }
+  }
+  
+  /**
+   * 验证缓存文件是否有效
+   */
+  function validateLicenseCache(cacheData) {
+    if (!cacheData) {
+      return { valid: false, reason: '缓存文件不存在' };
+    }
+    
+    // 检查必要字段
+    if (!cacheData.code || !cacheData.machineId) {
+      return { valid: false, reason: '缓存文件数据不完整' };
+    }
+    
+    // 验证机器码
+    const currentMachineId = generateMachineId();
+    if (cacheData.machineId !== currentMachineId) {
+      return { 
+        valid: false, 
+        reason: '机器码不匹配（此许可证绑定到其他设备）',
+        details: `缓存: ${cacheData.machineId}, 当前: ${currentMachineId}`
+      };
+    }
+    
+    // 验证成功
+    return { 
+      valid: true, 
+      code: cacheData.code,
+      machineId: cacheData.machineId,
+      activatedAt: cacheData.activatedAt
+    };
+  }
 
   /**
    * 获取系统硬件信息（AE 环境）
@@ -590,7 +863,7 @@
   }
 
   /**
-   * 验证激活码
+   * 验证激活码（联网验证）
    */
   async function verifyLicense(code) {
     const machineId = generateMachineId();
@@ -610,10 +883,18 @@
       const result = await response.json();
       
       if (result.valid) {
-        // 激活成功，保存信息
+        // 激活成功，保存信息到localStorage
         localStorage.setItem(STORAGE_KEYS.LICENSE_CODE, code.trim().toUpperCase());
         localStorage.setItem(STORAGE_KEYS.ACTIVATION_STATUS, 'activated');
         localStorage.setItem(STORAGE_KEYS.ACTIVATION_TIME, Date.now());
+        
+        // 写入加密缓存文件（支持离线验证）
+        writeLicenseCache({
+          code: code.trim().toUpperCase(),
+          machineId: machineId,
+          activatedAt: Date.now()
+        });
+        
         return { success: true, message: result.message || '激活成功！' };
       } else {
         return { success: false, message: result.reason || '激活失败' };
@@ -622,6 +903,41 @@
       console.error('激活验证失败:', error);
       return { success: false, message: '网络连接失败，请检查网络后重试' };
     }
+  }
+  
+  /**
+   * 离线验证（使用本地缓存文件）
+   */
+  function verifyOffline(callback) {
+    console.log('🔍 尝试离线验证...');
+    
+    readLicenseCache(function(cacheData) {
+      const validation = validateLicenseCache(cacheData);
+      
+      if (validation.valid) {
+        console.log('✅ 离线验证成功');
+        
+        // 更新localStorage
+        localStorage.setItem(STORAGE_KEYS.LICENSE_CODE, validation.code);
+        localStorage.setItem(STORAGE_KEYS.ACTIVATION_STATUS, 'activated');
+        localStorage.setItem(STORAGE_KEYS.ACTIVATION_TIME, validation.activatedAt);
+        
+        callback({ 
+          success: true, 
+          offline: true,
+          code: validation.code,
+          machineId: validation.machineId,
+          message: '离线验证成功'
+        });
+      } else {
+        console.log('❌ 离线验证失败:', validation.reason);
+        callback({ 
+          success: false, 
+          offline: true,
+          message: validation.reason 
+        });
+      }
+    });
   }
 
   /**
@@ -1154,30 +1470,66 @@
    * 启动时检查激活状态
    */
   function initLicenseCheck() {
-    const status = checkActivationStatus();
+    console.log('🚀 启动激活检查系统...');
     
-    // 如果未激活，延迟5秒后显示激活界面
-    if (!status.isActivated) {
-      console.log('⏰ 激活界面将在 5 秒后显示...');
-      setTimeout(() => {
-        console.log('🔐 显示激活界面');
-        createActivationUI();
-      }, 5000); // 5秒 = 5000毫秒
-    } else {
-      // 已激活，可选：静默验证
-      console.log('✅ 软件已激活，机器码:', status.machineId);
-      
-      // 可以在后台验证激活状态
-      verifyLicense(status.code).then(result => {
-        if (!result.success) {
-          console.warn('⚠️ 激活状态异常，请重新激活');
-          localStorage.removeItem(STORAGE_KEYS.ACTIVATION_STATUS);
+    // 优先尝试离线验证（使用缓存文件）
+    verifyOffline(function(offlineResult) {
+      if (offlineResult.success) {
+        // 离线验证成功
+        console.log('✅ 离线验证通过，软件可正常使用');
+        console.log('📝 激活码:', offlineResult.code);
+        console.log('🖥️  机器码:', offlineResult.machineId);
+        
+        // 可选：在后台尝试联网验证（不阻塞用户使用）
+        setTimeout(() => {
+          verifyLicense(offlineResult.code).then(result => {
+            if (result.success) {
+              console.log('🌐 在线验证成功，缓存已更新');
+            } else {
+              console.warn('⚠️ 在线验证失败，但离线缓存仍然有效');
+            }
+          }).catch(e => {
+            console.log('🔌 网络不可用，使用离线模式');
+          });
+        }, 2000);
+        
+      } else {
+        // 离线验证失败，检查localStorage
+        console.log('❌ 离线验证失败:', offlineResult.message);
+        
+        const status = checkActivationStatus();
+        
+        if (!status.isActivated) {
+          // 未激活，显示激活界面
+          console.log('⏰ 未检测到有效许可证，激活界面将在 5 秒后显示...');
           setTimeout(() => {
+            console.log('🔐 显示激活界面');
             createActivationUI();
           }, 5000);
+        } else {
+          // localStorage显示已激活，但缓存文件无效，尝试联网验证
+          console.log('🌐 尝试联网验证...');
+          
+          verifyLicense(status.code).then(result => {
+            if (!result.success) {
+              console.warn('⚠️ 联网验证失败，请重新激活');
+              localStorage.removeItem(STORAGE_KEYS.ACTIVATION_STATUS);
+              setTimeout(() => {
+                createActivationUI();
+              }, 5000);
+            } else {
+              console.log('✅ 联网验证成功');
+            }
+          }).catch(error => {
+            console.error('❌ 联网验证异常:', error);
+            console.log('⚠️ 无法验证许可证，请确保网络连接正常');
+            setTimeout(() => {
+              createActivationUI();
+            }, 5000);
+          });
         }
-      });
-    }
+      }
+    });
   }
 
   // 全局函数：手动显示激活界面（用于菜单调用）
@@ -1188,6 +1540,62 @@
   // 全局函数：获取激活状态（供其他模块调用）
   window.getActivationStatus = function() {
     return checkActivationStatus();
+  };
+  
+  // 全局函数：查看缓存文件信息（调试用）
+  window.debugLicenseCache = function() {
+    console.log('=== 许可证缓存调试信息 ===');
+    console.log('操作系统:', getOSType());
+    console.log('缓存目录:', getCacheDirectory());
+    console.log('缓存文件名:', CACHE_FILE_NAME);
+    console.log('机器码:', generateMachineId());
+    
+    readLicenseCache(function(cacheData) {
+      if (cacheData) {
+        console.log('缓存数据:', cacheData);
+        const validation = validateLicenseCache(cacheData);
+        console.log('验证结果:', validation);
+      } else {
+        console.log('缓存文件不存在或读取失败');
+      }
+    });
+  };
+  
+  // 全局函数：清除缓存文件（调试用）
+  window.clearLicenseCache = function() {
+    if (typeof CSInterface === 'undefined') {
+      console.warn('CSInterface 不可用');
+      return;
+    }
+    
+    const csInterface = new CSInterface();
+    const cacheDir = getCacheDirectory();
+    const filePath = cacheDir + '/' + CACHE_FILE_NAME;
+    
+    const script = `
+      (function() {
+        try {
+          var file = new File("${filePath.replace(/\\/g, '/')}");
+          if (file.exists) {
+            file.remove();
+            return "success";
+          }
+          return "not_found";
+        } catch(e) {
+          return "error:" + e.toString();
+        }
+      })();
+    `;
+    
+    csInterface.evalScript(script, function(result) {
+      if (result === 'success') {
+        console.log('✅ 缓存文件已删除');
+        localStorage.clear();
+        console.log('✅ localStorage 已清空');
+      } else {
+        console.log('结果:', result);
+      }
+    });
   };
 
   // 页面加载完成后执行激活检查
