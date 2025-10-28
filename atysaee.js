@@ -468,7 +468,7 @@
           return systemPath;
         }
       } catch(e) {
-        console.log('获取系统路径失败:', e);
+        // 静默失败
       }
     }
     
@@ -498,7 +498,6 @@
       // Base64编码
       return btoa(encodeURIComponent(encrypted));
     } catch(e) {
-      console.error('加密失败:', e);
       return null;
     }
   }
@@ -520,7 +519,6 @@
       
       return decrypted;
     } catch(e) {
-      console.error('解密失败:', e);
       return null;
     }
   }
@@ -530,7 +528,6 @@
    */
   function writeLicenseCache(data) {
     if (typeof CSInterface === 'undefined') {
-      console.warn('CSInterface 不可用，无法写入缓存文件');
       return false;
     }
     
@@ -552,7 +549,6 @@
       const encrypted = encryptData(jsonStr);
       
       if (!encrypted) {
-        console.error('数据加密失败');
         return false;
       }
       
@@ -582,17 +578,12 @@
       `;
       
       csInterface.evalScript(script, function(result) {
-        if (result === 'success') {
-          console.log('✅ 许可证缓存文件已写入:', filePath);
-        } else {
-          console.error('❌ 写入缓存文件失败:', result);
-        }
+        // 静默处理结果
       });
       
       return true;
       
     } catch(e) {
-      console.error('写入缓存文件异常:', e);
       return false;
     }
   }
@@ -602,7 +593,6 @@
    */
   function readLicenseCache(callback) {
     if (typeof CSInterface === 'undefined') {
-      console.warn('CSInterface 不可用，无法读取缓存文件');
       callback(null);
       return;
     }
@@ -635,14 +625,7 @@
       `;
       
       csInterface.evalScript(script, function(result) {
-        if (result === 'not_found') {
-          console.log('缓存文件不存在');
-          callback(null);
-          return;
-        }
-        
-        if (result.indexOf('error:') === 0) {
-          console.error('读取缓存文件失败:', result);
+        if (result === 'not_found' || result.indexOf('error:') === 0) {
           callback(null);
           return;
         }
@@ -650,23 +633,19 @@
         // 解密数据
         const decrypted = decryptData(result);
         if (!decrypted) {
-          console.error('解密缓存文件失败');
           callback(null);
           return;
         }
         
         try {
           const cacheData = JSON.parse(decrypted);
-          console.log('✅ 成功读取许可证缓存文件');
           callback(cacheData);
         } catch(e) {
-          console.error('解析缓存文件失败:', e);
           callback(null);
         }
       });
       
     } catch(e) {
-      console.error('读取缓存文件异常:', e);
       callback(null);
     }
   }
@@ -708,7 +687,6 @@
    */
   function deleteLicenseCache(callback) {
     if (typeof CSInterface === 'undefined') {
-      console.warn('CSInterface 不可用，无法删除缓存文件');
       if (callback) callback(false);
       return;
     }
@@ -734,20 +712,10 @@
       `;
       
       csInterface.evalScript(script, function(result) {
-        if (result === 'success') {
-          console.log('✅ 缓存文件已删除:', filePath);
-          if (callback) callback(true);
-        } else if (result === 'not_found') {
-          console.log('缓存文件不存在');
-          if (callback) callback(true);
-        } else {
-          console.error('删除缓存文件失败:', result);
-          if (callback) callback(false);
-        }
+        if (callback) callback(result === 'success' || result === 'not_found');
       });
       
     } catch(e) {
-      console.error('删除缓存文件异常:', e);
       if (callback) callback(false);
     }
   }
@@ -785,7 +753,7 @@
             info.os = osInfo;
           }
         } catch(e) {
-          console.log('CSInterface 获取失败:', e);
+          // 静默失败
         }
       }
 
@@ -796,7 +764,7 @@
       info.screen = screen.width + 'x' + screen.height + '@' + screen.colorDepth + 'bit';
 
     } catch(e) {
-      console.log('硬件信息获取失败:', e);
+      // 静默失败
     }
     
     return info;
@@ -830,7 +798,7 @@
         return (vendor + '_' + renderer).replace(/\s+/g, '_').substring(0, 50);
       }
     } catch(e) {
-      console.log('WebGL 获取失败:', e);
+      // 静默失败
     }
     return 'gpu_unknown';
   }
@@ -842,20 +810,11 @@
     // 尝试从本地存储读取已有的机器码
     let machineId = localStorage.getItem(STORAGE_KEYS.MACHINE_ID);
     if (machineId) {
-      console.log('使用已保存的机器码:', machineId);
       return machineId;
     }
 
-    // 获取硬件信息
+    // 获取硬件信息并生成新的机器码
     const hwInfo = getSystemHardwareInfo();
-    
-    console.log('=== 硬件信息采集 ===');
-    console.log('CPU:', hwInfo.cpu);
-    console.log('GPU:', hwInfo.gpu);
-    console.log('OS:', hwInfo.os);
-    console.log('屏幕:', hwInfo.screen);
-    
-    // 生成新的机器码（基于硬件特征）
     const components = [
       hwInfo.cpu,           // CPU 核心数或型号
       hwInfo.gpu,           // GPU 渲染器信息
@@ -877,11 +836,6 @@
     
     // 保存到本地存储
     localStorage.setItem(STORAGE_KEYS.MACHINE_ID, machineId);
-    
-    console.log('=== 机器码生成成功 ===');
-    console.log('机器码:', machineId);
-    console.log('指纹:', fingerprint);
-    
     return machineId;
   }
 
@@ -949,7 +903,6 @@
         return { success: false, message: result.reason || '激活失败' };
       }
     } catch (error) {
-      console.error('激活验证失败:', error);
       return { success: false, message: '网络连接失败，请检查网络后重试' };
     }
   }
@@ -958,14 +911,10 @@
    * 离线验证（使用本地缓存文件）
    */
   function verifyOffline(callback) {
-    console.log('🔍 尝试离线验证...');
-    
     readLicenseCache(function(cacheData) {
       const validation = validateLicenseCache(cacheData);
       
       if (validation.valid) {
-        console.log('✅ 离线验证成功');
-        
         // 更新localStorage
         localStorage.setItem(STORAGE_KEYS.LICENSE_CODE, validation.code);
         localStorage.setItem(STORAGE_KEYS.ACTIVATION_STATUS, 'activated');
@@ -979,7 +928,6 @@
           message: '离线验证成功'
         });
       } else {
-        console.log('❌ 离线验证失败:', validation.reason);
         callback({ 
           success: false, 
           offline: true,
@@ -1272,7 +1220,7 @@
       
       <div id="ae-activation-overlay"></div>
       <div class="activation-content">
-        <div class="activation-title">🔐 软件激活</div>
+        <div class="activation-title">Atomx-汉化脚本激活</div>
         <div class="activation-subtitle">请输入您的激活码以继续使用</div>
         
         <div class="machine-id-display">
@@ -1319,7 +1267,7 @@
         </div>
 
         <div class="activation-info">
-          需要帮助？请联系技术支持 | © 2025
+          激活码联系QQ：1076914857-或者淘宝客服 | © 2025
         </div>
       </div>
     `;
@@ -1487,14 +1435,8 @@
     const panel = document.getElementById('ae-activation-panel');
     const overlay = document.getElementById('ae-activation-overlay');
     
-    if (panel) {
-      panel.remove();
-    }
-    if (overlay) {
-      overlay.remove();
-    }
-    
-    console.log('✅ 激活面板已关闭');
+    if (panel) panel.remove();
+    if (overlay) overlay.remove();
   }
 
   /**
@@ -1519,23 +1461,13 @@
    * 启动时检查激活状态
    */
   function initLicenseCheck() {
-    console.log('🚀 启动激活检查系统...');
-    
     // 优先尝试离线验证（使用缓存文件）
     verifyOffline(function(offlineResult) {
       if (offlineResult.success) {
-        // 离线验证成功
-        console.log('✅ 离线验证通过，软件可正常使用');
-        console.log('📝 激活码:', offlineResult.code);
-        console.log('🖥️  机器码:', offlineResult.machineId);
-        
-        // 在后台尝试联网验证（验证服务器是否有此激活码）
+        // 离线验证成功，在后台尝试联网验证
         setTimeout(() => {
-          console.log('🌐 后台验证激活码有效性...');
           verifyLicense(offlineResult.code).then(result => {
-            if (result.success) {
-              console.log('✅ 在线验证成功，激活码有效');
-            } else {
+            if (!result.success) {
               // 检查是否是网络错误（断网情况）
               const isNetworkError = result.message && (
                 result.message.indexOf('网络') >= 0 || 
@@ -1544,69 +1476,40 @@
                 result.message.indexOf('Failed to fetch') >= 0
               );
               
-              if (isNetworkError) {
-                // 网络不可用，跳过验证
-                console.log('🔌 网络不可用，跳过在线验证，继续使用离线模式');
-                console.log('💡 提示：下次联网时会自动验证激活码有效性');
-              } else {
+              if (!isNetworkError) {
                 // 真正的验证失败（激活码不存在或机器码不匹配）
-                console.error('❌ 服务器验证失败:', result.message);
-                console.warn('⚠️ 本地缓存文件可能已失效或被篡改');
-                
-                // 清除本地缓存文件
-                deleteLicenseCache(function(deleted) {
-                  if (deleted) {
-                    console.log('🗑️  已清除本地缓存文件');
-                  }
-                });
-                
-                // 清除 localStorage
+                deleteLicenseCache();
                 localStorage.removeItem(STORAGE_KEYS.ACTIVATION_STATUS);
                 localStorage.removeItem(STORAGE_KEYS.LICENSE_CODE);
                 localStorage.removeItem(STORAGE_KEYS.ACTIVATION_TIME);
-                
-                // 弹出激活界面
                 alert('许可证验证失败！\n\n原因：' + result.message + '\n\n请重新激活软件。');
                 createActivationUI();
               }
             }
           }).catch(e => {
-            // 异常捕获（例如代码错误）
-            console.log('🔌 网络异常，跳过在线验证，继续使用离线模式');
-            console.log('异常信息:', e);
+            // 网络异常，静默处理
           });
         }, 2000);
         
       } else {
         // 离线验证失败，检查localStorage
-        console.log('❌ 离线验证失败:', offlineResult.message);
-        
         const status = checkActivationStatus();
         
         if (!status.isActivated) {
-          // 未激活，显示激活界面
-          console.log('⏰ 未检测到有效许可证，激活界面将在 5 秒后显示...');
+          // 未激活，5秒后显示激活界面
           setTimeout(() => {
-            console.log('🔐 显示激活界面');
             createActivationUI();
           }, 5000);
         } else {
           // localStorage显示已激活，但缓存文件无效，尝试联网验证
-          console.log('🌐 尝试联网验证...');
-          
           verifyLicense(status.code).then(result => {
             if (!result.success) {
-              console.warn('⚠️ 联网验证失败，请重新激活');
               localStorage.removeItem(STORAGE_KEYS.ACTIVATION_STATUS);
               setTimeout(() => {
                 createActivationUI();
               }, 5000);
-            } else {
-              console.log('✅ 联网验证成功');
             }
           }).catch(error => {
-            console.error('❌ 联网验证异常:', error);
-            console.log('⚠️ 无法验证许可证，请确保网络连接正常');
             setTimeout(() => {
               createActivationUI();
             }, 5000);
@@ -1624,45 +1527,6 @@
   // 全局函数：获取激活状态（供其他模块调用）
   window.getActivationStatus = function() {
     return checkActivationStatus();
-  };
-  
-  // 全局函数：查看缓存文件信息（调试用）
-  window.debugLicenseCache = function() {
-    console.log('=== 许可证缓存调试信息 ===');
-    console.log('操作系统:', getOSType());
-    console.log('缓存目录:', getCacheDirectory());
-    console.log('缓存文件名:', CACHE_FILE_NAME);
-    console.log('机器码:', generateMachineId());
-    
-    readLicenseCache(function(cacheData) {
-      if (cacheData) {
-        console.log('缓存数据:', cacheData);
-        const validation = validateLicenseCache(cacheData);
-        console.log('验证结果:', validation);
-      } else {
-        console.log('缓存文件不存在或读取失败');
-      }
-    });
-  };
-  
-  // 全局函数：清除缓存文件（调试用）
-  window.clearLicenseCache = function() {
-    console.log('🗑️  开始清除所有激活信息...');
-    
-    // 删除缓存文件
-    deleteLicenseCache(function(deleted) {
-      if (deleted) {
-        console.log('✅ 缓存文件已删除');
-      }
-      
-      // 清空 localStorage
-      localStorage.removeItem(STORAGE_KEYS.LICENSE_CODE);
-      localStorage.removeItem(STORAGE_KEYS.MACHINE_ID);
-      localStorage.removeItem(STORAGE_KEYS.ACTIVATION_STATUS);
-      localStorage.removeItem(STORAGE_KEYS.ACTIVATION_TIME);
-      console.log('✅ localStorage 已清空');
-      console.log('✅ 所有激活信息已清除，请重新启动软件');
-    });
   };
 
   // 页面加载完成后执行激活检查
