@@ -102,43 +102,103 @@ exports.handler = async (event, context) => {
       const seed = path.split('/gen/')[1];
       const code = genCode(seed);
       
-      // 检查是否已存在
-      const { data: existing } = await supabase
-        .from(TABLE_NAME)
-        .select('*')
-        .eq('code', code)
-        .single();
-
-      if (!existing) {
-        // 插入新激活码
-        const { error } = await supabase
+      try {
+        // 检查是否已存在 - 使用简化查询减少BigQuery负载
+        const { data: existing, error: selectError } = await supabase
           .from(TABLE_NAME)
-          .insert([{
-            code,
-            machine_id: null,
-            created_at: new Date().toISOString(),
-            activated_at: null
-          }]);
+          .select('code')
+          .eq('code', code)
+          .maybeSingle();
 
-        if (error) {
-          console.error('插入错误:', error);
+        // 处理BigQuery配额错误
+        if (selectError && (
+          selectError.message?.includes('rate limit') || 
+          selectError.message?.includes('quota') ||
+          selectError.code === 'PGRST116'
+        )) {
+          console.warn('数据库查询受限，直接生成激活码:', selectError.message);
+          // 配额受限时直接返回生成的激活码，不查重
           return {
-            statusCode: 500,
+            statusCode: 200,
             headers,
-            body: JSON.stringify({ error: '数据库错误', details: error.message })
+            body: JSON.stringify({ 
+              seed, 
+              code, 
+              message: '激活码生成成功（数据库繁忙，未进行重复检查）',
+              warning: '数据库暂时繁忙'
+            })
           };
         }
+
+        if (!existing) {
+          // 插入新激活码 - 使用upsert避免重复插入错误
+          const { error: insertError } = await supabase
+            .from(TABLE_NAME)
+            .upsert([{
+              code,
+              machine_id: null,
+              created_at: new Date().toISOString(),
+              activated_at: null
+            }], { 
+              onConflict: 'code',
+              ignoreDuplicates: true 
+            });
+
+          // 处理BigQuery配额错误
+          if (insertError && (
+            insertError.message?.includes('rate limit') || 
+            insertError.message?.includes('quota')
+          )) {
+            console.warn('数据库插入受限，但激活码已生成:', insertError.message);
+            return {
+              statusCode: 200,
+              headers,
+              body: JSON.stringify({ 
+                seed, 
+                code, 
+                message: '激活码生成成功（数据库繁忙，未保存到数据库）',
+                warning: '数据库暂时繁忙，激活码可能需要稍后验证'
+              })
+            };
+          }
+
+          if (insertError) {
+            console.error('插入错误:', insertError);
+            return {
+              statusCode: 500,
+              headers,
+              body: JSON.stringify({ 
+                error: '数据库错误', 
+                details: insertError.message,
+                code: code // 仍然返回生成的激活码
+              })
+            };
+          }
+        }
+        
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ 
+            seed, 
+            code, 
+            message: '激活码生成成功' 
+          })
+        };
+      } catch (error) {
+        console.error('生成激活码时发生错误:', error);
+        // 即使数据库出错，也返回生成的激活码
+        return {
+          statusCode: 200,
+          headers,
+          body: JSON.stringify({ 
+            seed, 
+            code, 
+            message: '激活码生成成功（离线模式）',
+            warning: '数据库连接异常，激活码未保存'
+          })
+        };
       }
-      
-      return {
-        statusCode: 200,
-        headers,
-        body: JSON.stringify({ 
-          seed, 
-          code, 
-          message: '激活码生成成功' 
-        })
-      };
     }
 
     // 批量生成激活码
@@ -177,17 +237,58 @@ exports.handler = async (event, context) => {
         });
       }
 
-      // 批量插入
-      const { error } = await supabase
-        .from(TABLE_NAME)
-        .insert(records);
+      // 批量插入 - 添加配额错误处理
+      try {
+        const { error } = await supabase
+          .from(TABLE_NAME)
+          .upsert(records, { 
+            onConflict: 'code',
+            ignoreDuplicates: true 
+          });
 
-      if (error) {
-        console.error('批量插入错误:', error);
+        // 处理BigQuery配额错误
+        if (error && (
+          error.message?.includes('rate limit') || 
+          error.message?.includes('quota')
+        )) {
+          console.warn('批量插入受限，返回生成的激活码:', error.message);
+          return {
+            statusCode: 200,
+            headers,
+            body: JSON.stringify({
+              success: true,
+              count: codes.length,
+              codes,
+              message: `成功生成 ${codes.length} 个激活码（数据库繁忙，未保存）`,
+              warning: '数据库暂时繁忙，激活码可能需要稍后验证'
+            })
+          };
+        }
+
+        if (error) {
+          console.error('批量插入错误:', error);
+          return {
+            statusCode: 500,
+            headers,
+            body: JSON.stringify({ 
+              error: '数据库错误', 
+              details: error.message,
+              codes: codes // 仍然返回生成的激活码
+            })
+          };
+        }
+      } catch (error) {
+        console.error('批量生成时发生错误:', error);
         return {
-          statusCode: 500,
+          statusCode: 200,
           headers,
-          body: JSON.stringify({ error: '数据库错误', details: error.message })
+          body: JSON.stringify({
+            success: true,
+            count: codes.length,
+            codes,
+            message: `成功生成 ${codes.length} 个激活码（离线模式）`,
+            warning: '数据库连接异常，激活码未保存'
+          })
         };
       }
 
